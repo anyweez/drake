@@ -1,3 +1,7 @@
+
+# This script attempts to establish a connection to the query server and submit
+# a query.
+
 import sys, zmq
 
 from_link = sys.argv[1]

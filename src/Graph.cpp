@@ -19,13 +19,16 @@ Graph::Graph(std::string filename) {
 
 // TODO: This needs to be debugged once real data is there.
 Graph::~Graph() {
+	std::cout << "Destructing..." << std::endl;
 	if (this->built_successfully()) {
-		delete this->num_outlinks;	
+		delete [] this->num_outlinks;	
 	
 		for (unsigned int i = 0; i < this->num_nodes(); ++i) {
-			delete adj_list[i];
+			if (adj_list[i] != NULL) {
+				delete [] adj_list[i];
+			}
 		}
-		delete adj_list;
+		delete [] adj_list;
 	}
 }
 
@@ -39,6 +42,8 @@ unsigned int* Graph::read_graph() {
 		std::ifstream::pos_type file_size = infile.tellg();
 		infile.seekg(0, std::ios::beg);
 
+		// Reading in everything as an unsigned int.  This needs to be upheld
+		// by the graph writing software (parsexml.py) as well.
 		unsigned int* raw_graph = new unsigned int[file_size / sizeof(unsigned int)];
 		infile.read((char *)raw_graph, file_size);
 		
@@ -60,10 +65,13 @@ unsigned int* Graph::read_graph() {
  * file contains the full Wikipedia graph (directed, unweighted) and is
  * in the following format:
  * 		node_id		num_outlinks		out_id1		out_id2		...
- * The first unsigned int is the number of nodes in the dataset.
+ * The first unsigned int is the number of nodes in the dataset and the
+ * second is the highest node ID that appears in the dataset.
+ * 
  * All data is encoded as unsigned integers.  There is no delimiting 
  * character between each record since the length of each record can be 
- * determined by the num_outlinks field.
+ * determined by the num_outlinks field.  The nodes should be in increasing
+ * order (according to node ID).
  */
 void Graph::form_graph(unsigned int* raw_data) {
 	// There was a problem opening the file...let's bail.
@@ -72,47 +80,47 @@ void Graph::form_graph(unsigned int* raw_data) {
 	}
 	std::cout << "Interpreting node data..." << std::endl;
 	unsigned int* ptr = raw_data;
-	unsigned int file_nodes = *ptr;
-	ptr++;
+//	unsigned int file_nodes = *ptr++;
+	unsigned int max_id = *ptr++;
+	this->node_count = max_id + 1;
+	std::cout << "Number of nodes: " << this->num_nodes() << std::endl;
 	
 	// This is a one-dimensional array that holds the number of outlinks
-	// for each node, indexable by node ID.
-	this->num_outlinks = new unsigned short[file_nodes];
+	// for each node, indexed by node ID.
+	this->num_outlinks = new unsigned int[this->num_nodes()];
+	this->adj_list = new unsigned int*[this->num_nodes()];
     // Initialize everything to 0 so that values that weren't processed (if any)
-	// won't be filled with garbage.
-	for (unsigned int i = 0; i < file_nodes; i++) {
+	// won't be filled with garbage.  The adjacency list pointers should
+	// also be nulled out for the same reason.
+	for (unsigned int i = 0; i < this->num_nodes(); i++) {
 		this->num_outlinks[i] = 0;
+		this->adj_list[i] = NULL;
 	}
-
-	// This loop iterates once per node.  After each iteration the target node
-	// will be fully initialized.
 	
-//		this->adj_list[current_id] = new unsigned short[this->num_outlinks[current_id]];
-	this->adj_list = new unsigned int*[file_nodes];
-	std::cout << "Number of nodes: " << file_nodes << std::endl;
+	unsigned int now_count = 0;
+	unsigned int current_id = 0;
 
-	while (this->num_nodes() < file_nodes) {
-		unsigned int current_id = *ptr++;
+	while (current_id != max_id) {
+		current_id = *ptr++;
 		this->num_outlinks[current_id] = *ptr++;
-	
-		this->adj_list[current_id] = new unsigned int[this->num_outlinks[current_id]];
+
+		if (this->num_outlinks[current_id] > 0) {
+			this->adj_list[current_id] = new unsigned int[this->num_outlinks[current_id]];
 		
-		for (unsigned int olc = 0; olc < this->num_outlinks[current_id]; olc++) {
-			this->adj_list[current_id][olc] = *ptr++;
+			for (unsigned int olc = 0; olc < this->num_outlinks[current_id]; olc++) {
+				this->adj_list[current_id][olc] = *ptr++;
+			}
 		}
 		
 		if (this->num_nodes() % 10000 == 0) {
-			std::cout << "Reading nodes : [ " << this->num_nodes() << " / " << file_nodes << " ]\r";
-		}
-
+			std::cout << "Reading nodes : [ " << now_count << " / " << this->num_nodes() << " ]\r";
+		}			
 		// Increment the number of nodes.
-		this->node_count++;
+		now_count++;
 	}
-	std::cout << "Reading nodes : [ " << this->num_nodes() << " / " << file_nodes << " ]\r";
-	
-	std::cout << std::endl;
+	std::cout << "Reading nodes : [ " << this->num_nodes() << " / " << this->num_nodes() << " ]\r" << std::endl;
 	// Delete the raw form.
-	delete raw_data;
+	delete[] raw_data;
 }
 
 unsigned int Graph::num_nodes() {

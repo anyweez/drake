@@ -18,7 +18,7 @@ class Graph {
 
 	private:
 	unsigned int** adj_list;
-	unsigned short* num_outlinks; // Stores the number of outlinks per node.
+	unsigned int* num_outlinks; // Stores the number of outlinks per node.
 								// This array should be the same length as
 	unsigned int node_count;
 	

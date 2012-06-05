@@ -1,7 +1,7 @@
 #ifndef GRAPHPATH_H
 #define GRAPHPATH_H
 
-#include <stack>
+#include <list>
 
 class GraphPath {
 	public:
@@ -13,8 +13,11 @@ class GraphPath {
 	unsigned int* get_path();
 	
 	private:
-	std::stack<unsigned int> nodes;
+	void compress_path();
+	
+	std::list<unsigned int> nodes;
 	unsigned int* path;
+	bool compressed;
 };
 
 #endif

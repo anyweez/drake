@@ -1,10 +1,12 @@
 import xml.etree.cElementTree as ElementTree
-import sys, re, array, MySQLdb
+import sys, re, array, MySQLdb, GraphWriter
+import MySQLdb.cursors
 
 # Should eventually make this dynamic...
 TOTAL_NUM_ARTICLES = 11600000
+MAX_INDEX = 1000
 
-conn = MySQLdb.connect(user='root', passwd='lucAS101', db='wikimap')
+conn = MySQLdb.connect(user='root', passwd='lucAS101', db='drake', cursorclass = MySQLdb.cursors.SSCursor)
 cursor = conn.cursor()
 link_pattern = re.compile("\[\[([a-zA-Z0-9_\(\)'|]*)\]\]")
 
@@ -55,32 +57,32 @@ if len(sys.argv) is not 2:
    print '   need to specify this subdirectory in the argument.'
    sys.exit(1)
 
-print '[1 / 2] Loading articles from database...'
+print '[1 / 2] Loading articles titles from database...'
 
 # SUBJECTS contains all article titles and maps to the article's unique ID.
 subjects = {}
 rowcount = 0
 
-cursor.execute("SELECT article_id, title FROM articles")
-result = cursor.fetchone()
+cursor.execute("SELECT id, title FROM articles ORDER BY id ASC")
+#result = cursor.fetchone()
 
-while result is not None:
+for result in cursor:
+# Load all of the subjects from the database.
+#while result is not None:
    subjects[result[1]] = int(result[0])
-	
-   if rowcount % 10000 is 0:
-      sys.stdout.write('Completed %d rows.\r' % rowcount)
 
    rowcount += 1
-   result = cursor.fetchone()
+   if rowcount % 10000 is 0:
+      sys.stdout.write('Completed %d rows.\r' % rowcount)
+      
+#   if int(result[0]) >= MAX_INDEX:
+#	   break
+
 print ''
 print '[1 / 2] Complete: loaded %d articles.' % len(subjects.keys())
 print '[2 / 2] Parsing article edges...'
 
 infile = open('%s' % sys.argv[1])
-
-outdata = array.array('I')
-# Add the number of articles as the header data.
-outdata.append(int(str(len(subjects.keys())), 10))
 
 # Parse the XML file one item at a time.  This isn't going to be paricularly fast
 # but will keep us from running into memory constraints.
@@ -94,6 +96,8 @@ curr_node_list = []
 #should_record = True
 current_article_num = 0
 
+gwriter = GraphWriter.GraphWriter('wikimap.bin')
+
 for event, elem in context:
    # At the end of a title definition, extract the title and switch
    # the necessary state to declare that we're working on a new item.
@@ -106,7 +110,11 @@ for event, elem in context:
 
 #      elif not should_record:
 #         outdata.append(int('0', 10))
-         
+
+#      if current_article_num > MAX_INDEX:
+#		  print 'Completed subset.'
+#		  break
+		  
       # Empty the current node list.
       curr_node_list[:] = []
       current_title = asciify(elem.text)
@@ -123,39 +131,30 @@ for event, elem in context:
       links = get_links(elem.text, link_pattern)
       for link in links:
          try:
+#            if subjects[link] <= MAX_INDEX:
             curr_node_list.append(subjects[link])
          except KeyError:
             pass
       # Clear everything in the root so far once the record has been processed.
       root.clear()
 
-      ### Convert all of the data to binary and store it in the OUTDATA
-      ### vector.
-
       # Add the node ID to start off this record.
-      try:  
+      try:
          # This can potentially throw a KeyError exception if CURRENT_TITLE
          # refers to an article that we don't know about.
-	     outdata.append(int(str(subjects[current_title]), 10))
-#	     should_record = True
-
-         # Add the number of edges that this node has.
-         outdata.append(int(str(len(curr_node_list)), 10))
-         # Add each of the nodes.
-         for node in curr_node_list:
-            outdata.append(int(str(node), 10))
+         gwriter.write_row(int(subjects[current_title]), curr_node_list)
       except KeyError:
+         print ''
          print 'unknown article: %s' % current_title
-#	     should_record = False
+         print ''
 
-
-# Record data for the last record.
-outdata.append(int(str(len(curr_node_list)), 10))
-for node in curr_node_list:
-   outdata.append(int(str(node), 10))
-
-outfile = open('wikimap.bin', 'wb')
-outdata.tofile(outfile)
-outfile.close()
+if len(curr_node_list) > 0:
+   try:
+      gwriter.write_row(subjects[current_title], curr_node_list)
+   except KeyError:
+      print ''
+      print 'unknown article: %s' % current_title
+      print ''      
+      
 infile.close()
 print '[2 / 2] Complete.'
